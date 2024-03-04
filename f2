@@ -1,0 +1,194 @@
+version: "3.7"
+
+services:
+  reverse-proxy-uat:
+    depends_on:
+      - wireme-core-uat
+      - aoer-service
+      - email-service
+      - pushnotification-server
+    image: layantha/dev:proxy-ca-uat
+    ports:
+      - 82:81
+    networks:
+      - wireme-core-ca-network
+    restart: always
+    container_name: "proxy-ca-uat"
+    volumes:
+      - /home/wireme/logs:/usr/share/nginx/html/files
+  wireme-core-uat:
+    image: pasinduchathura/wireme:core-ca
+    volumes:
+      - /home/wireme/logs/core:/logs
+      - /home/wireme/reports:/home/reports
+    environment:
+      - FROM_DOCKER=1
+      - NODE_ENV=development
+      - JWT_EXPIRES_IN=2h
+      # - DB_HOST=host.docker.internal
+      - DB_TYPE=oracle
+      - DB_HOST=124.43.71.173
+      - DB_PORT=1521
+      - DB_UNAME=boc_test
+      - DB_PWORD=password
+      - DB_NAME=orcl
+      - LOG_PORT=24224
+      - LOG_HOST=123.231.95.112
+      - AOER_PORT=9090
+      - AOER_HOST=aoer-service
+      - TZ=Asia/Colombo
+      - MYSQL_ROOT_HOST='%'
+      - SMS_HOST=172.20.8.163
+      - SMS_PORT=9090
+        #- SETTLEMENT_SMS_BODY=A_SETTLEMENT_of_batch:_${batch}_on_TID:_${terminalId},_MID:_${merchantId}_for_LKR_${amountStr}_on_${date}_at_${time}_is_completed
+      - EMAIL_HOST=172.24.2.26
+      - EMAIL_PORT=25
+      - EMAIL_UNAME=wiremetest@boc.lk
+      - EMAIL_PWORD=wiremetest12
+      - EMAIL_SECURED=false
+      - EMAIL_TLS=true
+      - EMAIL_SERVICE_HOST=email-service
+      - EMAIL_SERVICE_PORT=9091
+      - LOG_FILE_PATH=/logs
+      - FILE_EXPORT_SERVICE_DIRECTORY=/home/reports
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    container_name: "wireme-core-ca-uat"
+    networks:
+      - wireme-core-ca-network
+    restart: always
+
+  pushnotification-server:
+    image: chanudocker1/mpos:pushnotification-server1
+    container_name: pushnotification-server
+    restart: always
+    volumes:
+      - /home/wireme/logs/pushnotification-server:/home/logs/PushService
+    environment:
+      - DB_HOST=124.43.71.173
+      - DB_PORT=1521
+      - DB_USER=boc_test
+      - DB_PASSWORD=password
+      - DB_NAME=orcl
+      - SIGNATURE_SYNQ_SERVICE=wireme-core:8502
+      - DEVICEINFO_SYNQ_SERVICE=aoer-service:9090
+      - SPRING_DATASOURCE_URL=jdbc:oracle:thin:@124.43.71.173:1521:orcl
+      - CBA_GETDEVICEINFOENDPOINT=http://aoer-service:9090/api/aoer/v1/device-status
+      - TZ=Asia/Colombo
+    ports:
+      - "8502:8500"
+      - "8503:8501"
+    networks:
+      - wireme-core-ca-network
+
+  email-service:
+    image: email-service:latest
+    container_name: email-service
+    ports:
+      - 9091:9091
+    networks:
+      - wireme-core-ca-network
+    environment:
+      - SPRING_MAIL_HOST=smtp.gmail.com
+      - SPRING_MAIL_PORT=587
+      - SPRING_MAIL_USERNAME=cbadev2021@gmail.com
+      - SPRING_MAIL_PASSWORD=rqtxmosiovfndjpg
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+      - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
+      - SENDER_MAIL_ADDRESS=cbadev2021@gmail.com
+      - SENDER_BANK_LOGO=${LOGO}
+
+  aoer-service:
+    image: aoer-service:boc
+    container_name: aoer-service
+    ports:
+      - 9090:9090
+    networks:
+      - wireme-core-ca-network
+    depends_on:
+      - email-service
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:oracle:thin:@//124.43.71.173:1521/orcl
+      - SPRING_DATASOURCE_USERNAME=boc_test
+      - SPRING_DATASOURCE_PASSWORD=password
+      - EMAIL_BASEURL=http://email-service:9091/api/email/v1
+
+  file-export-service:
+    image: pasinduchathura/wireme:file-export-service
+    container_name: file-export-service
+    restart: always
+    volumes:
+      - /home/wireme/reports:/home/reports
+      - /home/wireme/logs/file-export:/home/logs/FileExportService
+    environment:
+      - DB_HOST=124.43.71.173
+      - DB_PORT=1521
+      - DB_USER=boc_test
+      - DB_PASSWORD=password
+      - DB_NAME=orcl
+      - CLEANUP_DIRECTORY=/home/reports
+      - CLEANUP_PERIOD=1
+      - CLEANUP_CRON=0 30 01 * * ?
+      - FILE_EXPORT_CRON=0 * * * * ?
+      - TZ=Asia/Colombo
+    ports:
+      - "9797:9797"
+    networks:
+      - wireme-core-ca-network
+
+  # aoer-service:
+  #   image: aoer-service:boc
+  #   container_name: aoer-service
+  #   ports:
+  #     - 9090:9090
+  #   networks:
+  #     - wireme-core-ca-network
+  #   restart: always
+  #   volumes:
+  #     - /home/wireme/logs/aoer-service:/logs
+  #   environment:
+  #     - SPRING_DATASOURCE_URL=jdbc:oracle:thin:@172.23.33.6:1521:wrmeuat1
+  #     - SPRING_DATASOURCE_USERNAME=wireme_core
+  #     - SPRING_DATASOURCE_PASSWORD=Wireme@112
+  #     - SPRING_MAIL_HOST=172.24.2.26
+  #     - SPRING_MAIL_PORT=25
+  #     - SPRING_MAIL_USERNAME=wiremetest@boc.lk
+  #     - SPRING_MAIL_PASSWORD=wiremetest12
+  #     - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+  #     - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false
+  #     - SENDER_MAIL_ADDRESS=wiremetest@boc.lk
+  #     - TZ=Asia/Colombo
+
+  # email-service:
+  #   image: email-service:latest
+  #   ports:
+  #     - 9091:9091
+  #   networks:
+  #     - wireme-core-ca-network
+  #   restart: always
+  #   container_name: "email-service"
+  #   volumes:
+  #     - /home/wireme/logs/email-service:/logs
+  #   environment:
+  #     - SPRING_MAIL_HOST=172.24.2.26
+  #     - SPRING_MAIL_PORT=25
+  #     - SPRING_MAIL_USERNAME=wiremetest@boc.lk
+  #     - SPRING_MAIL_PASSWORD=wiremetest12
+  #     - SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+  #     - SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false
+  #     - SENDER_MAIL_ADDRESS=wiremetest@boc.lk
+  #     - SENDER_BANK_LOGO=${LOGO}
+  #     - TZ=Asia/Colombo
+
+  # wireme-frontend:
+  #   image: cba_wireme_frontend:1.0.0.2_20240119
+  #   ports:
+  #     - 443:80
+  #   networks:
+  #     - wireme-core-ca-network-uat
+  #   restart: always
+  #   container_name: 'wireme-frontend'
+
+networks:
+  wireme-core-ca-network:
+    name: wireme-core-ca-network
